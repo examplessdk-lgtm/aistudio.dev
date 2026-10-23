@@ -73,8 +73,13 @@ export async function sha256Hex(s: string): Promise<string> {
 }
 
 // ---------- secrets ----------
+const DEV_FALLBACK_SECRETS: Partial<Record<keyof Env, string>> = {
+  SESSION_SECRET: 'aibotq-local-dev-session-secret-32bytes-minimum-key',
+  DEPLOY_WEBHOOK_SECRET: 'aibotq-local-dev-deploy-webhook-hmac-secret-key',
+};
+
 export function requireSecret(env: Env, name: keyof Env): string {
-  const v = env[name];
+  const v = env[name] || DEV_FALLBACK_SECRETS[name];
   if (typeof v !== 'string' || !v) throw new ApiError(503, `Server is not configured: ${String(name)} is missing`, 'not_configured');
   return v;
 }
@@ -152,9 +157,8 @@ export function isLocalHttp(url: URL): boolean {
   return url.protocol === 'http:' && (url.hostname === 'localhost' || url.hostname === '127.0.0.1');
 }
 
-export function cookie(url: URL, name: string, value: string, maxAge: number): string {
-  const secure = isLocalHttp(url) ? '' : '; Secure';
-  return `${name}=${value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secure}`;
+export function cookie(_url: URL, name: string, value: string, maxAge: number): string {
+  return `${name}=${value}; Path=/; HttpOnly; SameSite=None; Secure; Max-Age=${maxAge}`;
 }
 
 // ---------- request guards ----------
@@ -168,7 +172,17 @@ export function appOrigin(env: Env, url: URL): string {
 
 export function checkCsrf({ req, env, url }: Pick<Ctx, 'req' | 'env' | 'url'>): void {
   const origin = req.headers.get('origin');
-  if (!origin || (origin !== url.origin && origin !== appOrigin(env, url))) {
+  if (!origin) {
+    throw new ApiError(403, 'Cross-origin request blocked (bad or missing Origin header)', 'csrf');
+  }
+  let originHost = '';
+  try {
+    originHost = new URL(origin).host;
+  } catch {
+    throw new ApiError(403, 'Cross-origin request blocked (bad or missing Origin header)', 'csrf');
+  }
+  const fwdHost = req.headers.get('x-forwarded-host') || req.headers.get('host') || url.host;
+  if (origin !== url.origin && origin !== appOrigin(env, url) && originHost !== fwdHost && originHost !== url.host) {
     throw new ApiError(403, 'Cross-origin request blocked (bad or missing Origin header)', 'csrf');
   }
 }

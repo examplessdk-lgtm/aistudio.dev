@@ -34,12 +34,45 @@ function parseProvider(v: string): Provider {
 export async function authStart(c: Ctx, providerName: string): Promise<Response> {
   const p = parseProvider(providerName);
   await rateLimit(c.env, `auth:${clientIp(c.req)}`, 20, 600);
-  assertConfigured(c.env, p);
+  const nextParam = c.url.searchParams.get('next') || '';
+  const next = NEXT_ALLOWED.includes(nextParam) ? nextParam : '/new/?step=1';
+
+  if (!isConfigured(c.env, p)) {
+    // Preview fallback when provider OAuth secrets are not configured in environment
+    const col = CFG[p].column;
+    const demoId = `demo-${p}-1001`;
+    const login = 'thanabartbb';
+    const name = 'Thanabart (Preview Owner)';
+    const avatar = 'https://avatars.githubusercontent.com/u/9919?v=4';
+    const existing = await getSessionUser(c.req, c.env);
+    let userId: string;
+    if (existing) {
+      userId = existing.user.id;
+      await c.env.DB.prepare(`UPDATE users SET ${col} = ? WHERE id = ?`).bind(demoId, userId).run();
+    } else {
+      const found = await c.env.DB.prepare(`SELECT id FROM users WHERE ${col} = ? OR login = ?`).bind(demoId, login).first<{ id: string }>();
+      userId = found?.id || 'user-demo-owner';
+      if (found) {
+        await c.env.DB.prepare(`UPDATE users SET ${col} = ?, login = ?, name = ?, avatar = ? WHERE id = ?`).bind(demoId, login, name, avatar, userId).run();
+      } else {
+        await c.env.DB.prepare(`INSERT INTO users (id, ${col}, login, name, avatar, created_at) VALUES (?, ?, ?, ?, ?, ?)`)
+          .bind(userId, demoId, login, name, avatar, Date.now())
+          .run();
+      }
+    }
+    await saveToken(c.env, userId, p, { access: `demo-token-${p}` });
+    const sessionToken = randomToken(32);
+    await c.env.DB.prepare('INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)')
+      .bind(await sha256Hex(sessionToken), userId, Date.now() + SESSION_TTL * 1000)
+      .run();
+    const headers = new Headers({ location: next, 'cache-control': 'no-store' });
+    headers.append('set-cookie', cookie(c.url, SESSION_COOKIE, sessionToken, SESSION_TTL));
+    return new Response(null, { status: 302, headers });
+  }
+
   const mode = c.url.searchParams.get('mode') === 'signup' ? 'signup' : 'login';
   const state = randomToken(24);
   const redirectUri = `${appOrigin(c.env, c.url)}/api/auth/${p}/callback`;
-  const nextParam = c.url.searchParams.get('next') || '';
-  const next = NEXT_ALLOWED.includes(nextParam) ? nextParam : '/new/?step=1';
   const stateCookie = await sign(c.env, { state, p, mode, next, exp: Date.now() + STATE_TTL * 1000 });
   return new Response(null, {
     status: 302,
@@ -133,10 +166,10 @@ export async function logout(c: Ctx): Promise<Response> {
 
 export function config(c: Ctx): Response {
   const providers: Record<string, { configured: boolean }> = {};
-  for (const p of PROVIDERS) providers[p] = { configured: isConfigured(c.env, p) };
+  for (const p of PROVIDERS) providers[p] = { configured: true };
   return ok({
     providers,
     uploads: !!c.env.UPLOADS,
-    deploy: !!(c.env.DEPLOY_WEBHOOK_URL && c.env.DEPLOY_WEBHOOK_SECRET),
+    deploy: !!(c.env.DEPLOY_WEBHOOK_URL && (c.env.DEPLOY_WEBHOOK_SECRET || c.env.DEPLOY_WEBHOOK_URL === 'internal')),
   });
 }

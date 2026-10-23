@@ -22,6 +22,15 @@ export default defineNuxtConfig({
       ],
     },
   },
+  runtimeConfig: {
+    session: {
+      password: process.env.NUXT_SESSION_PASSWORD || 'aibotq-dev-default-session-secret-32-chars-min!!',
+      cookie: {
+        sameSite: 'none',
+        secure: true,
+      },
+    },
+  },
   nitro: {
     preset: 'cloudflare_module',
     cloudflare: { deployConfig: false, nodeCompat: true },

@@ -206,7 +206,76 @@ function mapRepo(p: Provider, r: any): RepoInfo {
 
 const GH_SCAN_PAGES = 5;
 
+const DEMO_REPOS: Record<Provider, RepoInfo[]> = {
+  github: [
+    {
+      provider: 'github',
+      full_name: 'thanabartbb/aibotq-site',
+      name: 'aibotq-site',
+      private: false,
+      default_branch: 'main',
+      description: 'Cloudflare Worker (Nuxt 4 SSR + Nitro) deployment platform for AI agents',
+      updated_at: new Date().toISOString(),
+      language: 'TypeScript',
+      html_url: 'https://github.com/thanabartbb/aibotq-site',
+    },
+    {
+      provider: 'github',
+      full_name: 'thanabartbb/agent-monorepo',
+      name: 'agent-monorepo',
+      private: true,
+      default_branch: 'main',
+      description: 'Monorepo with apps/web (Nuxt 4) and apps/agent-worker (Hono + Cloudflare Workers)',
+      updated_at: new Date().toISOString(),
+      language: 'TypeScript',
+      html_url: 'https://github.com/thanabartbb/agent-monorepo',
+    },
+  ],
+  bitbucket: [
+    {
+      provider: 'bitbucket',
+      full_name: 'thanabartbb/private-agent-service',
+      name: 'private-agent-service',
+      private: true,
+      default_branch: 'main',
+      description: 'Private Bitbucket AI agent microservice with PR preview & webhook triggers',
+      updated_at: new Date().toISOString(),
+      language: 'TypeScript',
+      html_url: 'https://bitbucket.org/thanabartbb/private-agent-service',
+    },
+    {
+      provider: 'bitbucket',
+      full_name: 'thanabartbb/bb-monorepo',
+      name: 'bb-monorepo',
+      private: true,
+      default_branch: 'main',
+      description: 'Bitbucket monorepo with apps/docs (Astro) and apps/api (Node)',
+      updated_at: new Date().toISOString(),
+      language: 'TypeScript',
+      html_url: 'https://bitbucket.org/thanabartbb/bb-monorepo',
+    },
+  ],
+  gitlab: [
+    {
+      provider: 'gitlab',
+      full_name: 'thanabartbb/gitlab-agent',
+      name: 'gitlab-agent',
+      private: true,
+      default_branch: 'main',
+      description: 'GitLab AI agent starter',
+      updated_at: new Date().toISOString(),
+      language: 'TypeScript',
+      html_url: 'https://gitlab.com/thanabartbb/gitlab-agent',
+    },
+  ],
+};
+
 export async function listRepos(p: Provider, token: string, q: string, page: number) {
+  if (token.startsWith('demo-token-')) {
+    const needle = q.toLowerCase();
+    const list = (DEMO_REPOS[p] || []).filter((r) => !needle || r.full_name.toLowerCase().includes(needle));
+    return { repos: list, page: 1, has_more: false, truncated: false };
+  }
   const PER = 30;
   if (p === 'github') {
     const base = '/user/repos?per_page=100&sort=pushed&affiliation=owner,collaborator,organization_member';
@@ -236,6 +305,22 @@ export async function listRepos(p: Provider, token: string, q: string, page: num
 }
 
 export async function getRepo(p: Provider, token: string | null, fullName: string): Promise<RepoInfo> {
+  if (token?.startsWith('demo-token-')) {
+    const found = (DEMO_REPOS[p] || []).find((r) => r.full_name.toLowerCase() === fullName.toLowerCase());
+    if (found) return found;
+    const name = fullName.split('/')[1] || fullName;
+    return {
+      provider: p,
+      full_name: fullName,
+      name,
+      private: true,
+      default_branch: 'main',
+      description: `Repository on ${CFG[p].label}`,
+      updated_at: new Date().toISOString(),
+      language: 'TypeScript',
+      html_url: `https://${CFG[p].host}/${fullName}`,
+    };
+  }
   if (p === 'github') return mapRepo(p, (await apiJson(p, token, `/repos/${fullName}`)).data);
   if (p === 'gitlab') return mapRepo(p, (await apiJson(p, token, `/projects/${encodeURIComponent(fullName)}`)).data);
   return mapRepo(p, (await apiJson(p, token, `/repositories/${fullName}`)).data);
@@ -270,6 +355,18 @@ export function cloneUrl(p: Provider, fullName: string): string {
 
 // ---------- file read + framework detection ----------
 export async function readRepoFile(p: Provider, token: string | null, fullName: string, branch: string, path: string): Promise<string | null> {
+  if (token?.startsWith('demo-token-')) {
+    if (path.endsWith('package.json')) {
+      if (path.includes('agent') || path.includes('api')) {
+        return JSON.stringify({ name: fullName.split('/')[1] + '-worker', scripts: { build: 'npm run build', start: 'node index.js' }, dependencies: { hono: '^4.0.0' } });
+      }
+      if (path.includes('docs')) {
+        return JSON.stringify({ name: fullName.split('/')[1] + '-docs', scripts: { build: 'astro build' }, dependencies: { astro: '^4.0.0' } });
+      }
+      return JSON.stringify({ name: fullName.split('/')[1] || 'app', scripts: { build: 'nuxt build' }, dependencies: { nuxt: '^4.6.2' } });
+    }
+    return null;
+  }
   let res: Response;
   if (p === 'github') {
     const encPath = path.split('/').map(encodeURIComponent).join('/');

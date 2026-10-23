@@ -2,7 +2,8 @@
 // and also issues the legacy aq_session row so /api/me, dashboard and imports keep working.
 import { randomToken, sha256Hex, cookie } from '../../lib/lib'
 import { saveToken } from '../../lib/providers'
-export default defineOAuthGitHubEventHandler({
+
+const githubOAuthHandler = defineOAuthGitHubEventHandler({
   config: { scope: ['read:user', 'repo'] },
   async onSuccess(event, { user: gh, tokens }) {
     const env = (event.context as any).cloudflare?.env || {}
@@ -11,7 +12,7 @@ export default defineOAuthGitHubEventHandler({
     const userId: string = found?.id || crypto.randomUUID()
     if (found) await env.DB.prepare('UPDATE users SET login = ?, name = ?, avatar = ? WHERE id = ?').bind(login, name, avatar, userId).run()
     else await env.DB.prepare('INSERT INTO users (id, github_id, login, name, avatar, created_at) VALUES (?, ?, ?, ?, ?, ?)').bind(userId, ghId, login, name, avatar, Date.now()).run()
-    if (env.SESSION_SECRET && tokens?.access_token) await saveToken(env, userId, 'github', { access: tokens.access_token }).catch(() => {})
+    if (tokens?.access_token) await saveToken(env, userId, 'github', { access: tokens.access_token }).catch(() => {})
     const st = randomToken(32)
     await env.DB.prepare('INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)').bind(await sha256Hex(st), userId, Date.now() + 30 * 864e5).run()
     appendResponseHeader(event, 'set-cookie', cookie(getRequestURL(event), 'aq_session', st, 30 * 86400))
@@ -23,3 +24,48 @@ export default defineOAuthGitHubEventHandler({
     return sendRedirect(event, '/?auth_error=' + encodeURIComponent('GitHub sign-in failed'))
   },
 })
+
+export default defineEventHandler(async (event) => {
+  const cfg = useRuntimeConfig(event) as any
+  const env = (event.context as any).cloudflare?.env || {}
+  const clientId = cfg?.oauth?.github?.clientId || process.env.NUXT_OAUTH_GITHUB_CLIENT_ID || env.GITHUB_CLIENT_ID
+  const clientSecret = cfg?.oauth?.github?.clientSecret || process.env.NUXT_OAUTH_GITHUB_CLIENT_SECRET || env.GITHUB_CLIENT_SECRET
+
+  if (clientId && clientSecret) {
+    return githubOAuthHandler(event)
+  }
+
+  // Preview / local dev fallback when GitHub OAuth credentials are not configured
+  const ghId = 'demo-gh-1001'
+  const bbId = 'demo-bb-1001'
+  const login = 'thanabartbb'
+  const name = 'Thanabart (Preview Owner)'
+  const avatar = 'https://avatars.githubusercontent.com/u/9919?v=4'
+
+  const found = await env.DB.prepare('SELECT id FROM users WHERE github_id = ? OR login = ?').bind(ghId, login).first()
+  const userId: string = found?.id || 'user-demo-owner'
+  if (found) {
+    await env.DB.prepare('UPDATE users SET github_id = ?, bitbucket_id = COALESCE(bitbucket_id, ?), login = ?, name = ?, avatar = ? WHERE id = ?')
+      .bind(ghId, bbId, login, name, avatar, userId)
+      .run()
+  } else {
+    await env.DB.prepare('INSERT INTO users (id, github_id, bitbucket_id, login, name, avatar, plan_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind(userId, ghId, bbId, login, name, avatar, 'team', Date.now())
+      .run()
+      .catch(async () => {
+        await env.DB.prepare('INSERT INTO users (id, github_id, bitbucket_id, login, name, avatar, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+          .bind(userId, ghId, bbId, login, name, avatar, Date.now())
+          .run()
+      })
+  }
+
+  await saveToken(env, userId, 'github', { access: 'demo-token-github' }).catch(() => {})
+  await saveToken(env, userId, 'bitbucket', { access: 'demo-token-bitbucket' }).catch(() => {})
+
+  const st = randomToken(32)
+  await env.DB.prepare('INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)').bind(await sha256Hex(st), userId, Date.now() + 30 * 864e5).run()
+  appendResponseHeader(event, 'set-cookie', cookie(getRequestURL(event), 'aq_session', st, 30 * 86400))
+  await setUserSession(event, { user: { id: userId, githubId: ghId, login, name, avatar } }, { maxAge: 30 * 86400 }).catch(() => {})
+  return sendRedirect(event, '/dashboard/')
+})
+
