@@ -1,0 +1,132 @@
+<div id="site-nav"></div>
+<main class="page"><div class="wrap">
+<div class="ph"><span class="eyebrow">// docs</span><h1 class="d">Documentation</h1><p>From repository to live URL in three steps, and everything underneath: instant deployment rollbacks, bot-aware chat builds, pricing tiers, SAML SSO, Bitbucket webhooks, monorepo multi-root support, and the signed build pipeline contract.</p></div>
+<div class="docs">
+<nav class="toc" aria-label="On this page">
+<a href="#source">1 · Connect a source</a>
+<a href="#configure">2 · Configure</a>
+<a href="#deploy">3 · Deploy</a>
+<a href="#rollback">Deployment rollbacks</a>
+<a href="#chat-deploys">Build from chat</a>
+<a href="#pricing">Pricing & quotas</a>
+<a href="#saml">SAML 2.0 SSO</a>
+<a href="#monorepo">Monorepo multi-app</a>
+<a href="#git-push">Git push & webhooks</a>
+<a href="#env">Environment variables</a>
+<a href="#pipeline">Build pipeline contract</a>
+<a href="#api">JSON API</a>
+<a href="#self-host">Self-hosting</a>
+</nav>
+<article class="prose">
+
+<h2 id="source" class="d">1 · Connect a source</h2>
+<p>Open <a href="/new/">/new</a>. You can start four ways:</p>
+<ul>
+<li><strong>Import a repository.</strong> Sign in with GitHub or Bitbucket, search your repositories — private and organization repos included — and press <em>Import</em>.</li>
+<li><strong>Public repository URL.</strong> Paste an <code>https://</code> URL on github.com, gitlab.com or bitbucket.org. Aibotq checks the repository exists before continuing.</li>
+<li><strong>Upload.</strong> Drop a folder or a <code>.zip</code>. Limits: 50&nbsp;MB and 1000 files; <code>node_modules</code>, <code>.git</code> and <code>.env*</code> are skipped. Uploads require an R2 bucket bound to the Worker.</li>
+<li><strong>Template.</strong> Agent App, AI Chatbot and Commerce Agent are template repositories ready to deploy.</li>
+</ul>
+
+<h2 id="configure" class="d">2 · Configure</h2>
+<table><thead><tr><th>Field</th><th>Notes</th></tr></thead><tbody>
+<tr><td>Project name</td><td>2–40 characters: lowercase letters, numbers, hyphens.</td></tr>
+<tr><td>Framework</td><td>nextjs, nuxt, astro, sveltekit, remix, vite, cra, node, static, other. Auto-detected from <code>package.json</code>.</td></tr>
+<tr><td>Build command</td><td>Single line, e.g. <code>npm run build</code>. Empty means no build step.</td></tr>
+<tr><td>Output directory</td><td>Relative path such as <code>dist</code> or <code>.next</code>.</td></tr>
+<tr><td>Root directory</td><td>For single-app repos or root folder. (For multi-app monorepos, see <a href="#monorepo">Monorepo support</a>).</td></tr>
+<tr><td>Environment variables</td><td>Write-only, AES-GCM encrypted.</td></tr>
+</tbody></table>
+
+<h2 id="deploy" class="d">3 · Deploy</h2>
+<p>Press <em>Deploy to edge</em>. Aibotq validates plan quotas, rate limits (10 deploys / 10 minutes), records the deployment in D1, and dispatches a signed HMAC request to the pipeline. The dashboard and chat assistant monitor live states — <strong>Queued → Building → Live</strong>.</p>
+
+<h2 id="rollback" class="d">Instant deployment rollbacks</h2>
+<p>You can roll back the live production URL to any previous <strong>ready</strong> deployment with <strong>zero rebuild time</strong>.</p>
+<ul>
+<li><strong>Retention Guard:</strong> Rollbacks are allowed to deployments created within the last <strong>7 days</strong>.</li>
+<li><strong>Zero Rebuild:</strong> Re-points the live URL instantly in D1 and sends a signed <code>rollback</code> event to the build pipeline to restore the stored artifact without compiling.</li>
+<li><strong>Audit Trail:</strong> Rollbacks generate a deployment history record with a distinct <code>Rollback to #&lt;id&gt;</code> badge.</li>
+<li><strong>API:</strong> <code>POST /api/projects/:id/deployments/:did/rollback</code>.</li>
+</ul>
+
+<h2 id="chat-deploys" class="d">Build from chat (bot-aware deployments)</h2>
+<p>The Aibotq assistant in <a href="/chat/">/chat</a> is directly connected to the deployment pipeline and D1:</p>
+<ul>
+<li><strong>Live Status:</strong> Ask <em>"สถานะ build ล่าสุดคืออะไร"</em> or <em>"What is the build status?"</em> and get real-time status.</li>
+<li><strong>Failure Diagnostics:</strong> Ask <em>"build ล้มเหลวเพราะอะไร"</em> — the bot reads the real build log from D1, pinpoints the failing step, quotes the error lines, and suggests a concrete fix.</li>
+<li><strong>Chat Tools:</strong> <code>deploy_project</code>, <code>list_deployments</code>, <code>get_build_log</code>, <code>rollback_deployment</code>, and <code>set_env_var</code> (write-only; secret values are never echoed back).</li>
+<li><strong>Access Control:</strong> Only project owners and team members can trigger builds or rollbacks.</li>
+</ul>
+
+<h2 id="pricing" class="d">Pricing tiers & quota enforcement</h2>
+<p>Quotas are enforced in both the web UI and agent chat before dispatching any build:</p>
+<table><thead><tr><th>Plan</th><th>Price</th><th>Builds / Month</th><th>Projects</th><th>Domains</th><th>Seats</th><th>Concurrent</th></tr></thead><tbody>
+<tr><td><strong>Hobby</strong></td><td>Free ($0)</td><td>100</td><td>5</td><td>1</td><td>1</td><td>1</td></tr>
+<tr><td><strong>Pro</strong></td><td>$20 / mo</td><td>1,000</td><td>20</td><td>10</td><td>3</td><td>3</td></tr>
+<tr><td><strong>Team</strong></td><td>$80 / mo</td><td>Unlimited (-1)</td><td>Unlimited</td><td>Unlimited</td><td>20</td><td>10</td></tr>
+</tbody></table>
+<p>When a Hobby plan reaches 100 builds in a monthly billing cycle, deploys return an honest <code>quota_exceeded</code> error (HTTP 402) with upgrade instructions rather than failing silently.</p>
+
+<h2 id="saml" class="d">Enterprise SAML 2.0 SSO</h2>
+<p>Organizations on the <strong>Team</strong> plan can configure SP-initiated SAML single sign-on with any SAML 2.0 Identity Provider (Okta, Entra ID / Azure AD, Google Workspace, OneLogin):</p>
+<ul>
+<li><strong>SP Metadata Endpoint:</strong> <code>GET /api/auth/saml/metadata</code></li>
+<li><strong>Assertion Consumer Service (ACS):</strong> <code>POST /api/auth/saml/acs</code></li>
+<li><strong>Security:</strong> Clock-skew tolerance ≤ 5 minutes, signed assertions, encrypted credentials and IdP metadata stored in D1.</li>
+<li><strong>Just-In-Time (JIT) Provisioning:</strong> New team members are automatically provisioned with roles mapped from IdP group attributes upon initial login.</li>
+<li><strong>Fallback Identity:</strong> GitHub OAuth remains linked as a fallback login.</li>
+</ul>
+
+<h2 id="monorepo" class="d">Monorepo multi-app support</h2>
+<p>A single Git repository can contain multiple root applications, each with independent framework detection, build commands, and output directories.</p>
+<table><thead><tr><th>App Name</th><th>Root Directory</th><th>Framework</th><th>Build Command</th><th>Output Dir</th></tr></thead><tbody>
+<tr><td><code>web</code></td><td><code>apps/web</code></td><td>Nuxt</td><td><code>npm run build</code></td><td><code>.output</code></td></tr>
+<tr><td><code>api</code></td><td><code>apps/api</code></td><td>Node / Hono</td><td><code>npm run build</code></td><td><code>dist</code></td></tr>
+<tr><td><code>docs</code></td><td><code>packages/docs</code></td><td>Astro</td><td><code>npm run build</code></td><td><code>dist</code></td></tr>
+</tbody></table>
+<p><strong>Path-Filtered Deploys:</strong> When commits are pushed to GitHub or Bitbucket, Aibotq inspects the list of changed files. A commit that only modifies <code>apps/web/src/pages/index.vue</code> only triggers a deployment for the <code>web</code> app, saving build minutes and compute time.</p>
+
+<h2 id="git-push" class="d">Git push & webhooks (GitHub & Bitbucket)</h2>
+<p>Webhooks are automatically registered for GitHub and Bitbucket repositories:</p>
+<ul>
+<li>Pushes to the <strong>default branch</strong> trigger <em>production</em> deployments.</li>
+<li>Pull requests <em>opened</em>, <em>synchronized</em>, or <em>reopened</em> trigger <em>preview</em> deployments with isolated URLs.</li>
+<li>Pull requests from forks are strictly ignored to prevent untrusted code execution.</li>
+<li>Webhook signatures are verified using HMAC-SHA256 secrets.</li>
+</ul>
+
+<h2 id="env" class="d">Environment variables</h2>
+<p>Up to 64 variables per project, encrypted at rest with AES-GCM. Variables are write-only: secret values are never returned by the API or echoed in chat responses.</p>
+
+<h2 id="pipeline" class="d">Build pipeline contract</h2>
+<p>Build requests are signed with <code>HMAC-SHA256(DEPLOY_WEBHOOK_SECRET, "&lt;timestamp&gt;.&lt;raw body&gt;")</code> in header <code>x-aibotq-signature</code>. Rollbacks send <code>x-aibotq-event: rollback</code> with the target artifact ID.</p>
+
+<h2 id="api" class="d">JSON API</h2>
+<table><thead><tr><th>Route</th><th>Method</th><th>Purpose</th></tr></thead><tbody>
+<tr><td><code>GET /api/projects/:id/deployments</code></td><td>GET</td><td>Deployment history with rollback badges.</td></tr>
+<tr><td><code>POST /api/projects/:id/deployments/:did/rollback</code></td><td>POST</td><td>Instant rollback to previous ready deployment (&lt; 7 days).</td></tr>
+<tr><td><code>GET /api/projects/:id/apps</code></td><td>GET</td><td>List monorepo applications.</td></tr>
+<tr><td><code>POST /api/projects/:id/apps</code></td><td>POST</td><td>Add a monorepo application root.</td></tr>
+<tr><td><code>DELETE /api/projects/:id/apps/:appId</code></td><td>DELETE</td><td>Remove a monorepo application.</td></tr>
+<tr><td><code>GET /api/billing/usage</code></td><td>GET</td><td>Current plan, quota limits, and monthly build usage.</td></tr>
+<tr><td><code>GET /api/auth/saml/metadata</code></td><td>GET</td><td>SAML 2.0 SP EntityDescriptor XML.</td></tr>
+<tr><td><code>GET /api/auth/saml/login</code></td><td>GET</td><td>SP-initiated SAML login redirect.</td></tr>
+<tr><td><code>POST /api/auth/saml/acs</code></td><td>POST</td><td>SAML Assertion Consumer Service.</td></tr>
+<tr><td><code>POST /api/webhooks/bitbucket</code></td><td>POST</td><td>Bitbucket push and pull request webhook handler.</td></tr>
+</tbody></table>
+
+<h2 id="self-host" class="d">Self-hosting</h2>
+<div class="win"><div class="bar"><b style="background:#FF5F57"></b><b style="background:#FEBC2E"></b><b style="background:#28C840"></b><span>setup</span></div><pre><code>npm install
+npx wrangler d1 create aibotq
+npx wrangler d1 migrations apply aibotq --remote
+npx wrangler secret put GITHUB_CLIENT_ID
+npx wrangler secret put GITHUB_CLIENT_SECRET
+npx wrangler secret put BITBUCKET_CLIENT_ID
+npx wrangler secret put BITBUCKET_CLIENT_SECRET
+npx wrangler secret put SESSION_SECRET
+npx wrangler secret put GITHUB_WEBHOOK_SECRET
+npx wrangler secret put DEPLOY_WEBHOOK_SECRET
+npx wrangler deploy</code></pre></div>
+</article></div></div></main>
+<div id="site-footer"></div>

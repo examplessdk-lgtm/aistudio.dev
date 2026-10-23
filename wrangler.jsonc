@@ -1,0 +1,49 @@
+{
+  "name": "aibotq-site",
+  "main": "./worker.ts",
+  "compatibility_date": "2026-05-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "./.output/public",
+    "binding": "ASSETS"
+  },
+  "routes": [{ "pattern": "aibotq.dev", "custom_domain": true }],
+  "workers_dev": true,
+  "vars": {
+    "APP_URL": "https://aibotq.dev",
+    // Template key -> "owner/repo" of a GitHub *template repository* (Settings > "Template repository").
+    // Replace these with real template repos; the API reports GitHub's error if one doesn't exist.
+    "TEMPLATES": {
+      "agent-app": "aibotq/template-agent-app",
+      "ai-chatbot": "aibotq/template-ai-chatbot",
+      "commerce-agent": "aibotq/template-commerce-agent"
+    },
+    "CHAT_MODEL": "anthropic/claude-haiku-5.5",
+    "OWNER_GITHUB_LOGINS": "thanabartbb,examplessdk-lgtm",
+    // "internal" = build in this Worker's Sandbox container and host at /sites/<slug>/ (R2 SITES).
+    // Or an external HMAC-signed pipeline URL (e.g. devstack.bid once it exposes /api/build).
+    "DEPLOY_WEBHOOK_URL": "internal"
+  },
+  "durable_objects": { "bindings": [{ "name": "SANDBOX", "class_name": "Sandbox" }] },
+  "containers": [{ "class_name": "Sandbox", "scheduling_policy": "durable_object", "images": { "sandbox": { "dockerfile": "./sandbox/Dockerfile" } } }],
+  "exports": { "Sandbox": { "type": "durable-object", "storage": "sqlite" } },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "aibotq",
+      // Created via wrangler d1 create aibotq
+      "database_id": "3dfcad82-8f7a-49a0-a207-13e564b1068d",
+      "migrations_dir": "migrations"
+    }
+  ],
+  // "ai": { "binding": "AI" },
+  "r2_buckets": [{ "binding": "SITES", "bucket_name": "aibotq-sites" }],
+  "env": {
+    "production": {
+      "ai": { "binding": "AI" }
+    }
+  }
+  // Folder/zip uploads need R2. Create a bucket (`wrangler r2 bucket create aibotq-uploads`) and uncomment.
+  // Without it, POST /api/upload returns a clear "upload not enabled" error.
+  // ,"r2_buckets": [{ "binding": "UPLOADS", "bucket_name": "aibotq-uploads" }]
+}

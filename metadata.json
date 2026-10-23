@@ -1,0 +1,8 @@
+{
+  "name": "aibotq.dev",
+  "description": "Deployment platform for AI agents with Cloudflare Worker SSR, D1, R2, agent chat, and external build pipeline",
+  "permissions": [],
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

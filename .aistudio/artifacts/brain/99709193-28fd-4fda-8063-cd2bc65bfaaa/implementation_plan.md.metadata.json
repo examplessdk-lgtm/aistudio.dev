@@ -1,0 +1,6 @@
+{
+  "summary":  "Implementation plan for aibotq.dev platform enhancements: deployment rollback, bot-aware chat builds & diagnostics, plan pricing tiers and quota enforcement, SAML 2.0 SSO with JIT provisioning, full Bitbucket integration with push/PR webhooks, monorepo multi-root support with path-filtered deploys, and documentation/changelog updates.",
+  "updatedAt":  "2026-10-23T16:00:20.565392342Z",
+  "requestFeedback":  true,
+  "userFacing":  true
+}
